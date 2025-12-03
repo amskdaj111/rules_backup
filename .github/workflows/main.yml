@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout 目标仓库的指定分支
+      # 1. Checkout 目标仓库分支
       - name: Checkout target repo
         uses: actions/checkout@v3
         with:
@@ -33,18 +33,21 @@ jobs:
       - name: Authenticate gh
         run: echo "${{ secrets.PAT_TOKEN }}" | gh auth login --with-token
 
-      # 5. 创建 Release（如果已存在同名 Release，会跳过）
-      - name: Create Release
+      # 5. 创建或更新 Release 并上传文件
+      - name: Create or update Release
         run: |
-          gh release create ${{ env.DATE }} \
-            --repo amskdaj111/yaml_to_mrs \
-            --title ${{ env.DATE }} \
-            --notes "Daily backup for ${{ env.DATE }}" || echo "Release already exists"
+          TAG=${{ env.DATE }}
+          REPO=amskdaj111/yaml_to_mrs
 
-      # 6. 上传每个文件到 Release
-      - name: Upload files to Release
-        run: |
+          # 检查 Release 是否存在
+          if gh release view $TAG --repo $REPO; then
+            echo "Release $TAG exists, will upload files."
+          else
+            echo "Release $TAG does not exist, creating..."
+            gh release create $TAG --repo $REPO --title $TAG --notes "Daily backup for $TAG"
+          fi
+
+          # 上传每个文件
           for file in $(find . -type f -not -path './.git/*'); do
-            gh release upload ${{ env.DATE }} "$file" \
-              --repo amskdaj111/yaml_to_mrs --clobber
+            gh release upload $TAG "$file" --repo $REPO --clobber
           done
