@@ -11,33 +11,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout 当前仓库（Release 会创建在这里）
-      - name: Checkout current repo
-        uses: actions/checkout@v3
-
-      # 2. Checkout 目标仓库分支到子目录
+      # 1. Checkout 目标仓库的指定分支
       - name: Checkout target repo
         uses: actions/checkout@v3
         with:
           repository: amskdaj111/yaml_to_mrs
           ref: rules-output
-          path: target-repo
+          token: ${{ secrets.PAT_TOKEN }}
 
-      # 3. 设置当天日期
+      # 2. 设置当天日期
       - name: Set date
         run: echo "DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
 
-      # 4. 复制目标仓库文件到临时目录
-      - name: Copy files
+      # 3. 安装 GitHub CLI
+      - name: Install GitHub CLI
         run: |
-          mkdir -p backup-${{ env.DATE }}
-          cp -r target-repo/* backup-${{ env.DATE }}/
+          sudo apt update
+          sudo apt install -y gh
 
-      # 5. 创建 Release 并上传文件
+      # 4. 登录 GitHub CLI
+      - name: Authenticate gh
+        run: echo "${{ secrets.PAT_TOKEN }}" | gh auth login --with-token
+
+      # 5. 创建 Release（如果已存在同名 Release，会跳过）
       - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ env.DATE }}
-          name: ${{ env.DATE }}
-          body: "Daily backup for ${{ env.DATE }}"
-          artifacts: backup-${{ env.DATE }}
+        run: |
+          gh release create ${{ env.DATE }} \
+            --repo amskdaj111/yaml_to_mrs \
+            --title ${{ env.DATE }} \
+            --notes "Daily backup for ${{ env.DATE }}" || echo "Release already exists"
+
+      # 6. 上传每个文件到 Release
+      - name: Upload files to Release
+        run: |
+          for file in $(find . -type f -not -path './.git/*'); do
+            gh release upload ${{ env.DATE }} "$file" \
+              --repo amskdaj111/yaml_to_mrs --clobber
+          done
