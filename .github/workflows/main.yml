@@ -2,59 +2,59 @@ name: Daily Backup
 
 on:
   schedule:
-    # 每天北京时间 12:00 → UTC 04:00
+    # 每天北京时间 12:00 -> UTC 04:00
     - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    
+    # 必须为 GITHUB_TOKEN 授予写权限，才能创建和管理 Release
+    permissions:
+      contents: write
 
     steps:
-      # 1. Checkout 当前仓库（Release 会创建在这里）
-      - name: Checkout this repo
-        uses: actions/checkout@v3
+      # 1. 检出当前仓库，Release 将在这里创建
+      - name: Checkout Current Repo
+        uses: actions/checkout@v4
 
-      # 2. Checkout 目标仓库分支到子目录
-      - name: Checkout target repo
-        uses: actions/checkout@v3
+      # 2. 检出目标仓库的内容到 'target-repo' 目录
+      - name: Checkout Target Repo
+        uses: actions/checkout@v4
         with:
           repository: amskdaj111/yaml_to_mrs
           ref: rules-output
           path: target-repo
 
-      # 3. 设置当天日期
-      - name: Set date
-        run: echo "DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
-
-      # 4. 安装 GitHub CLI
-      - name: Install GitHub CLI
+      # 3. 创建 Release 并上传文件
+      - name: Create Release and Upload Files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo apt update
-          sudo apt install -y gh
+          # 设置当天日期为标签
+          TAG=$(date +%Y%m%d)
+          
+          echo "Using tag: $TAG"
 
-      # 5. 登录 GitHub CLI（使用默认 GITHUB_TOKEN）
-      - name: Authenticate gh
-        run: echo "${GITHUB_TOKEN}" | gh auth login --with-token
-
-      # 6. 创建 Release（如果已存在就跳过）
-      - name: Create Release if not exists
-        run: |
-          TAG=${{ env.DATE }}
-          REPO="${GITHUB_REPOSITORY}"
-
-          if gh release view $TAG --repo $REPO; then
+          # 检查 Release 是否已存在，不存在则创建
+          # gh 会自动使用 GITHUB_TOKEN 进行认证
+          if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists."
           else
-            gh release create $TAG --repo $REPO --title $TAG --notes "Daily backup for $TAG"
+            echo "Creating new release: $TAG"
+            gh release create "$TAG" --title "$TAG" --notes "Daily backup for $TAG"
           fi
-
-      # 7. 上传每个文件到 Release
-      - name: Upload files to Release
-        run: |
-          TAG=${{ env.DATE }}
-          REPO="${GITHUB_REPOSITORY}"
-
-          for file in $(find target-repo -type f -not -path './.git/*'); do
-            gh release upload $TAG "$file" --repo $REPO --clobber
-          done
+          
+          echo "Starting file upload..."
+          
+          # 遍历 target-repo 目录中的所有文件（并排除 .git 目录）
+          # 使用 -exec 来执行上传，比 for 循环更高效稳定
+          find target-repo -type f -not -path 'target-repo/.git/*' -exec \
+            bash -c '
+              file_path="$1"
+              echo "Uploading $file_path..."
+              gh release upload "$0" "$file_path" --clobber
+            ' "$TAG" {} \;
+            
+          echo "All files uploaded."
