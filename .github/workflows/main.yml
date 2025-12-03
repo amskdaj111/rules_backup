@@ -1,0 +1,36 @@
+name: Daily Backup
+
+on:
+  schedule:
+    # 每天北京时间12点 → UTC 04:00
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout 目标仓库的指定分支
+      - name: Checkout target repo
+        uses: actions/checkout@v3
+        with:
+          repository: amskdaj111/yaml_to_mrs
+          ref: rules-output
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. 获取当天日期
+      - name: Set date
+        run: |
+          DATE=$(date +%Y%m%d)
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+      # 3. 上传每个文件到 Release
+      - name: Create Release with files
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.DATE }}
+          name: ${{ env.DATE }}
+          body: "Daily backup for ${{ env.DATE }}"
+          files: |
+            $(find . -type f -not -path './.git/*')
